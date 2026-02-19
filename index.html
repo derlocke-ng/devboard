@@ -1212,6 +1212,7 @@ function subscribeToData() {
         // Accept: signed+verified, or legacy unsigned
         posts[id] = { ...data, id };
         cachePost({ ...data, id });
+        watchVotesForPost(id);
       }
     }
     if (isLoading) {
@@ -1221,10 +1222,17 @@ function subscribeToData() {
     scheduleRender();
   });
 
-  DB.get('votes').map().map().on(async (val, voterPub, _msg, ev) => {
+}
+
+// ── PER-POST VOTE WATCHER ─────────────────────────────────────────────────────
+const _watchedVotePosts = new Set();
+
+function watchVotesForPost(postId) {
+  if (!postId || _watchedVotePosts.has(postId)) return;
+  _watchedVotePosts.add(postId);
+
+  DB.get('votes').get(postId).map().on(async (val, voterPub) => {
     if (!voterPub || voterPub === '_' || val === null || val === undefined) return;
-    const postId = _msg && _msg.get ? _msg.get : null;
-    if (!postId) return;
     if (!votes[postId]) votes[postId] = {};
 
     // Handle signed votes (string) vs legacy unsigned (number)
@@ -1240,9 +1248,6 @@ function subscribeToData() {
           myVotes[postId] = verified.d;
         }
       } catch (e) { return; }
-    } else if (typeof val === 'number') {
-      // Legacy unsigned vote — ignore, not trusted
-      return;
     } else {
       return;
     }
@@ -1813,6 +1818,7 @@ setInterval(() => {
       for (const p of cached) {
         if (p.expiresAt && now < p.expiresAt && p.id) {
           posts[p.id] = p;
+          watchVotesForPost(p.id);
           loadedCount++;
         } else if (p.id) {
           removeCachedPost(p.id);
